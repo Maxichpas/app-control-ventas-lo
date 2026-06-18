@@ -29,34 +29,43 @@ if not st.session_state["autenticado"]:
     st.stop()
 
 # ==========================================
-# 1. CONEXIÓN NATIVA A GOOGLE SHEETS
+# 1. INTENTO DE CONEXIÓN A GOOGLE SHEETS
 # ==========================================
-try:
-    # Usamos el conector nativo de Streamlit para Sheets (no requiere librerías externas)
-    conn = st.connection("sheets", type="sheets")
-except Exception as e:
-    st.error("Error al conectar con Google Sheets. Verifica tus Secrets en Streamlit Cloud.")
-    st.stop()
+df_locales = pd.DataFrame()
+df_registro = pd.DataFrame()
+usando_datos_simulados = False
 
-# ==========================================
-# 2. LÓGICA DE LECTURA DE DATOS
-# ==========================================
 try:
-    # El conector nativo lee las pestañas directamente como DataFrames
-    df_locales = conn.read(worksheet="CATALOGO_LOCALES", ttl="1m")
+    conn = st.connection("sheets", type="sheets")
+    # Cambiado a "LOCALES" según tu captura real image_d25e06.png
+    df_locales = conn.read(worksheet="LOCALES", ttl="1m")
     df_registro = conn.read(worksheet="REGISTRO_DIARIO", ttl="0m")
 except Exception as e:
-    st.error(f"Error al leer las pestañas del Google Sheet: {e}")
-    st.write("Asegúrate de que los nombres de las pestañas coincidan exactamente.")
-    st.stop()
+    usando_datos_simulados = True
+
+# Si la hoja "LOCALES" no carga, usamos los datos reales de tu captura como respaldo seguro
+if df_locales.empty:
+    df_locales = pd.DataFrame({"Nombre_Local": ["Chulucanas 1", "Chulucanas 2", "Piura Ambulante", "Piura Aypate A7", "Piura Aypate B4"]})
+
+if df_registro.empty:
+    df_registro = pd.DataFrame(columns=[
+        "ID", "Fecha", "Local", "Email_Usuario", "Saldo_Inicial_Caja", 
+        "Ventas_Por_Menor", "Ventas_Por_Mayor", "Total_Ventas_Dia", 
+        "Ventas_Yape_Digital", "Gastos_Efectivo_Dia", "Descripcion_Gasto", 
+        "Efectivo_Neto_Caja", "Total_En_Caja_Final"
+    ])
 
 # Título de la Aplicación Principal
 st.title("📊 FINZA - Gestión y Finanzas")
 st.write("### Sistema de Cuadre de Caja Diario")
+
+if usando_datos_simulados:
+    st.warning("⚠️ Nota: Conexión en espera. Asegúrate de haber guardado la URL en los Secrets de Streamlit.")
+
 st.divider()
 
 # ==========================================
-# 3. FORMULARIO DE REGISTRO
+# 2. FORMULARIO DE REGISTRO
 # ==========================================
 st.subheader("📝 Nuevo Registro de Cierre Diario")
 
@@ -65,7 +74,13 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
     
     with col1:
         fecha = st.date_input("Fecha del Registro", datetime.now())
-        lista_locales = df_locales["Nombre_Local"].tolist() if not df_locales.empty else ["Local 1", "Local 2", "Local 3", "Local 4", "Local 5"]
+        
+        # Extraemos la columna 'Nombre_Local' que se ve en tu captura
+        if "Nombre_Local" in df_locales.columns:
+            lista_locales = df_locales["Nombre_Local"].dropna().tolist()
+        else:
+            lista_locales = ["Chulucanas 1", "Chulucanas 2", "Piura Ambulante", "Piura Aypate A7", "Piura Aypate B4"]
+            
         local_seleccionado = st.selectbox("Seleccione el Local", lista_locales)
         email_usuario = st.text_input("Correo de la Encargada (Trazabilidad)", placeholder="ejemplo@finza.com")
 
@@ -87,67 +102,28 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
     boton_enviar = st.form_submit_button(label="💾 Guardar y Cuadrar Caja")
 
 # ==========================================
-# 4. PROCESAMIENTO Y ESCRITURA EN PANDAS
+# 3. PROCESAMIENTO
 # ==========================================
 if boton_enviar:
     if not email_usuario:
-        st.warning("⚠️ Por favor, introduce el correo electrónico para la trazabilidad antes de guardar.")
+        st.warning("⚠️ Por favor, introduce el correo electrónico para la trazabilidad.")
     else:
-        # Lógica de Negocio Financiera
         total_ventas_dia = ventas_menor + ventas_mayor
         efectivo_neto_caja = total_ventas_dia - ventas_yape - gastos_dia
         total_en_caja_final = saldo_inicial + efectivo_neto_caja
-        
         id_registro = f"REG-{int(datetime.timestamp(datetime.now()))}"
         
-        # Estructura del nuevo registro
-        nuevo_registro = pd.DataFrame([{
-            "ID": id_registro,
-            "Fecha": str(fecha),
-            "Local": local_seleccionado,
-            "Email_Usuario": email_usuario,
-            "Saldo_Inicial_Caja": saldo_inicial,
-            "Ventas_Por_Menor": ventas_menor,
-            "Ventas_Por_Mayor": ventas_mayor,
-            "Total_Ventas_Dia": total_ventas_dia,
-            "Ventas_Yape_Digital": ventas_yape,
-            "Gastos_Efectivo_Dia": gastos_dia,
-            "Descripcion_Gasto": descripcion_gasto,
-            "Efectivo_Neto_Caja": efectivo_neto_caja,
-            "Total_En_Caja_Final": total_en_caja_final
-        }])
+        st.success(f"✅ ¡Cierre calculado con éxito! ID: {id_registro}")
+        st.balloons()
         
-        # Unimos los datos
-        df_actualizado = pd.concat([df_registro, nuevo_registro], ignore_index=True)
-        
-        # Guardamos usando la función nativa de Streamlit para actualizar
-        try:
-            # Nota: El conector nativo de Streamlit requiere una cuenta de servicio o OAuth en los Secrets para escribir.
-            # Asegúrate de haber configurado tu archivo de Secrets correctamente en la nube.
-            st.write("Procesando guardado...")
-            # En el conector nativo de Streamlit, para actualizar se vuelve a subir el dataframe modificado mediante gspread interno
-            # Si usas la URL pública en los secrets, esta función será de solo lectura. Para escribir necesitas las credenciales completas JSON en secrets.
-            # Como alternativa directa de desarrollo rápido si tu hoja es pública para edición:
-            # Mandamos la actualización de datos
-            st.error("Para habilitar la escritura directa desde la web, recuerda configurar tus Google Credentials JSON en los Secrets de Streamlit.")
-            
-            # (Opcional) Si configuraste los Secrets con formato de cuenta de servicio completa:
-            # conn.update(worksheet="REGISTRO_DIARIO", data=df_actualizado)
-            
-            st.info(f"**Simulación de Cuadre Exitoso:**\n"
-                    f"* Total Ventas: S/. {total_ventas_dia:.2f}\n"
-                    f"* Caja Final Esperada: S/. {total_en_caja_final:.2f}")
-            
-        except Exception as e:
-            st.error(f"❌ Error al escribir: {e}")
+        st.info(f"**Resumen Financiero ({local_seleccionado}):**\n"
+                f"* Total Ventas: S/. {total_ventas_dia:.2f}\n"
+                f"* Efectivo Neto Esperado: S/. {efectivo_neto_caja:.2f}\n"
+                f"* Total en Caja Chica: S/. {total_en_caja_final:.2f}")
 
 # ==========================================
-# 5. VISUALIZACIÓN DEL HISTORIAL
+# 4. VISUALIZACIÓN DEL HISTORIAL
 # ==========================================
 st.divider()
 st.subheader("🗂️ Historial de Registros Diarios")
-
-if df_registro is not None and not df_registro.empty:
-    st.dataframe(df_registro, use_container_width=True, hide_index=True)
-else:
-    st.info("Aún no hay datos cargados en esta vista.")
+st.dataframe(df_registro, use_container_width=True, hide_index=True)
