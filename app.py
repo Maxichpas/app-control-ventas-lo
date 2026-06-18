@@ -84,7 +84,7 @@ if df_locales.empty:
         "Nombre_Local": ["Chulucanas 1", "Chulucanas 2", "Piura Ambulante", "Piura Aypate A7", "Piura Aypate B4"]
     })
 
-# Título Principal adaptado al usuario
+# Título Principal
 st.title("📊 FINZA - Gestión y Finanzas")
 if user["rol"] == "ADMIN":
     st.write("### Panel de Control General (Modo Administrador)")
@@ -136,12 +136,92 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
     st.markdown("### 🔍 Verificación y Cuadre de Caja")
     col5, col6, col7 = st.columns(3)
     
-    # 1. CÁLCULO DE EFECTIVO NETO ESPERADO (Efectivo_Neto_Caja)
+    # 1. CÁLCULO DE EFECTIVO NETO ESPERADO
     efectivo_neto_esperado = saldo_inicial + ventas_menor + ventas_mayor - ventas_yape - gastos_dia
     
     with col5:
         st.metric(label="Efectivo_Neto_Caja (Calculado)", value=f"S/. {efectivo_neto_esperado:.2f}")
     
     with col6:
-        # Casilla para ingresar lo que hay físicamente (Total_En_Caja_Final)
-        efectivo_fisico_real = st.number_input("Total_En_Caja_Final (Físico Real)", min_value=0.0, step=10.0, format="%.2f
+        efectivo_fisico_real = st.number_input("Total_En_Caja_Final (Físico Real)", min_value=0.0, step=10.0, format="%.2f")
+    
+    # 2. CÁLCULO DE LA DIFERENCIA Y ALERTA
+    diferencia_real = efectivo_fisico_real - efectivo_neto_esperado
+    
+    if diferencia_real == 0:
+        alerta_cuadre = "OK"
+    elif diferencia_real < 0:
+        alerta_cuadre = f"FALTA DINERO (S/. {abs(diferencia_real):.2f})"
+    else:
+        alerta_cuadre = f"SOBRA DINERO (S/. {diferencia_real:.2f})"
+    
+    with col7:
+        st.text_input("Alerta_Cuadre", value=alerta_cuadre, disabled=True)
+    
+    boton_enviar = st.form_submit_button(label="💾 Enviar Cierre Directo")
+
+# ==========================================
+# 3. PROCESAMIENTO Y ENVÍO AUTOMÁTICO
+# ==========================================
+if boton_enviar:
+    total_ventas_dia = ventas_menor + ventas_mayor
+    fecha_dt = datetime.combine(fecha_sel, datetime.min.time())
+    num_semana = fecha_dt.isocalendar()[1]
+    num_año = fecha_dt.year
+    
+    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    nombre_mes = meses[fecha_dt.month - 1]
+    
+    str_mes_año = f"{nombre_mes} - {num_año}"
+    str_sem_año = f"Sem {num_semana} - {num_año}"
+    id_registro = f"rd{int(datetime.timestamp(datetime.now()))}"
+
+    payload = {
+        "ID": id_registro,
+        "Fecha": fecha_sel.strftime("%d/%m/%Y"),
+        "ID_Local": id_local_sel,
+        "Saldo_Inicial_Caja": float(saldo_inicial),
+        "Ventas_Por_Menor": float(ventas_menor),
+        "Ventas_Por_Mayor": float(ventas_mayor),
+        "Total_Ventas_Dia": float(total_ventas_dia),
+        "Ventas_Yape_Digital": float(ventas_yape),
+        "Gastos_Efectivo_Dia": float(gastos_dia),
+        "Descripcion_Gasto": str(descripcion_gasto),
+        "Diferencia": float(diferencia_real),
+        "Semana": int(num_semana),
+        "Año": int(num_año),
+        "Mes": int(fecha_dt.month),
+        "Mes_Año": str_mes_año,
+        "Semana_Año": str_sem_año
+    }
+    
+    try:
+        script_url = st.secrets["connections"]["sheets"]["script_api"]
+        response = requests.post(script_url, data=json.dumps(payload), headers={"Content-Type": "application/json"})
+        
+        if response.status_code == 200 or "SUCCESS" in response.text:
+            st.success(f"🚀 ¡Cierre registrado AUTOMÁTICAMENTE en el Google Sheets! ID: {id_registro}")
+            st.balloons()
+            st.rerun()
+        else:
+            st.error(f"Error en respuesta del servidor de Google (Código: {response.status_code})")
+    except Exception as err:
+        st.error(f"❌ Error al conectar con la API de Google: {err}")
+
+# ==========================================
+# 4. VISUALIZACIÓN FILTRADA POR TIENDA
+# ==========================================
+st.divider()
+st.subheader("🗂️ Historial de Registros")
+
+if not df_registro.empty:
+    if user["rol"] != "ADMIN":
+        df_filtrado = df_registro[df_registro["ID_Local"] == user["id_local"]]
+        st.write(f"Mostrando solo los registros históricos de tu sucursal.")
+    else:
+        df_filtrado = df_registro
+        st.write("Mostrando registros globales de todas las sedes (Vista Admin).")
+        
+    st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+else:
+    st.info("No hay registros históricos disponibles en este momento.")
