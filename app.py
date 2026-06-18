@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import requests
+import json
 
 # Configuración de la página
 st.set_page_config(
@@ -10,31 +12,40 @@ st.set_page_config(
 )
 
 # ==========================================
-# SEGURIDAD BÁSICA (Control de Accesos)
+# CONFIGURACIÓN DE USUARIOS POR TIENDA
 # ==========================================
-PASSWORD_CORRECTA = "Finza2026*"
+# Definimos las contraseñas y qué "ID_Local" puede ver cada una
+USUARIOS = {
+    "admin": {"pass": "FinzaMaster2026*", "rol": "ADMIN", "id_local": "TODOS"},
+    "chulucanas1": {"pass": "Chulu1*", "rol": "TIENDA", "id_local": "0001", "nombre": "Chulucanas 1"},
+    "chulucanas2": {"pass": "Chulu2*", "rol": "TIENDA", "id_local": "0002", "nombre": "Chulucanas 2"},
+    "piura_amb": {"pass": "PiuraAmb*", "rol": "TIENDA", "id_local": "0003", "nombre": "Piura Ambulante"},
+    "piura_a7": {"pass": "PiuraA7*", "rol": "TIENDA", "id_local": "0004", "nombre": "Piura Aypate A7"},
+    "piura_b4": {"pass": "PiuraB4*", "rol": "TIENDA", "id_local": "0005", "nombre": "Piura Aypate B4"},
+}
 
-if "autenticado" not in st.session_state:
-    st.session_state["autenticado"] = False
+if "user_data" not in st.session_state:
+    st.session_state["user_data"] = None
 
-if not st.session_state["autenticado"]:
-    st.subheader("🔐 Acceso al Sistema FINZA")
-    password_ingresada = st.text_input("Introduce la contraseña:", type="password")
+if st.session_state["user_data"] is None:
+    st.subheader("🔐 Acceso al Sistema FINZA - Tiendas")
+    usuario_ingresado = st.text_input("Usuario (ej: chulucanas1 o admin):").strip().lower()
+    password_ingresada = st.text_input("Contraseña:", type="password")
+    
     if st.button("Iniciar Sesión"):
-        if password_ingresada == PASSWORD_CORRECTA:
-            st.session_state["autenticado"] = True
+        if usuario_ingresado in USUARIOS and USUARIOS[usuario_ingresado]["pass"] == password_ingresada:
+            st.session_state["user_data"] = USUARIOS[usuario_ingresado]
             st.rerun()
         else:
-            st.error("⚠️ Contraseña incorrecta.")
+            st.error("⚠️ Usuario o contraseña incorrectos.")
     st.stop()
 
-# ==========================================
-# 1. LECTURA DIRECTA POR URL EN MEMORIA (Infallible)
-# ==========================================
-# ID de tu Google Sheet real extraído de tu link
-SHEET_ID = "1PcL3wmbMCmPtdTYSo6CcOWOPpeHIe7mx2SmeOuWaHA0"
+user = st.session_state["user_data"]
 
-# Convertimos la URL para descarga directa en formato CSV por pestaña
+# ==========================================
+# 1. LECTURA DIRECTA POR URL EN MEMORIA
+# ==========================================
+SHEET_ID = "1PcL3wmbMCmPtdTYSo6CcOWOPpeHIe7mx2SmeOuWaHA0"
 URL_LOCALES = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=LOCALES"
 URL_REGISTRO = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=REGISTRO_DIARIO"
 
@@ -42,30 +53,31 @@ df_locales = pd.DataFrame()
 df_registro = pd.DataFrame()
 
 try:
-    # Leemos directamente usando Pandas (Evita usar el problemático st.connection)
     df_locales = pd.read_csv(URL_LOCALES)
     df_registro = pd.read_csv(URL_REGISTRO)
+    # Limpieza de strings
+    df_registro["ID_Local"] = df_registro["ID_Local"].astype(str).str.zfill(4)
+    df_locales["ID_Local"] = df_locales["ID_Local"].astype(str).str.zfill(4)
 except Exception as e:
-    st.error(f"Aviso de lectura: {e}")
+    pass
 
-# Datos de respaldo por si el internet del servidor falla
 if df_locales.empty:
     df_locales = pd.DataFrame({
         "ID_Local": ["0001", "0002", "0003", "0004", "0005"],
         "Nombre_Local": ["Chulucanas 1", "Chulucanas 2", "Piura Ambulante", "Piura Aypate A7", "Piura Aypate B4"]
     })
 
-if df_registro.empty:
-    df_registro = pd.DataFrame(columns=[
-        "ID", "Fecha", "ID_Local", "Saldo_Inicial_Caja", "Ventas_Por_Menor", 
-        "Ventas_Por_Mayor", "Total_Ventas_Dia", "Ventas_Yape_Digital", 
-        "Gastos_Efectivo_Dia", "Descripcion_Gasto", "Diferencia", 
-        "Semana", "Año", "Mes", "Mes - Año", "Semana - Año"
-    ])
-
-# Título de la Aplicación
+# Título Principal adaptado al usuario logueado
 st.title("📊 FINZA - Gestión y Finanzas")
-st.write("### Sistema de Cuadre de Caja Diario")
+if user["rol"] == "ADMIN":
+    st.write("### Panel de Control General (Modo Administrador)")
+else:
+    st.write(f"### Sistema de Cierre - Sede: **{user['nombre']}**")
+
+if st.button("🚪 Cerrar Sesión"):
+    st.session_state["user_data"] = None
+    st.rerun()
+
 st.divider()
 
 # ==========================================
@@ -79,12 +91,15 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
     with col1:
         fecha_sel = st.date_input("Fecha del Registro", datetime.now())
         
-        # Ajustamos los ID de locales para que mantengan el formato texto de 4 dígitos
-        df_locales["ID_Local"] = df_locales["ID_Local"].astype(str).str.zfill(4)
-        dict_locales = dict(zip(df_locales["Nombre_Local"], df_locales["ID_Local"]))
-        
-        local_nombre_sel = st.selectbox("Seleccione el Local", list(dict_locales.keys()))
-        id_local_sel = dict_locales[local_nombre_sel]
+        # SI ES TIENDA, bloqueamos el local para que solo registre el suyo. SI ES ADMIN, puede elegir.
+        if user["rol"] == "ADMIN":
+            dict_locales = dict(zip(df_locales["Nombre_Local"], df_locales["ID_Local"]))
+            local_nombre_sel = st.selectbox("Seleccione el Local", list(dict_locales.keys()))
+            id_local_sel = dict_locales[local_nombre_sel]
+        else:
+            id_local_sel = user["id_local"]
+            st.info(f"Local asignado automáticamente: **{user['nombre']}**")
+            
         email_usuario = st.text_input("Encargada (Email)", placeholder="ejemplo@finza.com")
 
     with col2:
@@ -103,10 +118,10 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
         descripcion_gasto = st.text_area("Descripción del Gasto", placeholder="Ej: Bolsas, pasajes, limpieza...")
         diferencia_real = st.number_input("Diferencia de Caja", step=1.0, format="%.2f")
 
-    boton_enviar = st.form_submit_button(label="💾 Calcular y Generar Fila")
+    boton_enviar = st.form_submit_button(label="💾 Enviar Cierre Directo a Google Sheets")
 
 # ==========================================
-# 3. PROCESAMIENTO MATEMÁTICO Y EXPORTACIÓN
+# 3. PROCESAMIENTO Y ENVÍO AUTOMÁTICO
 # ==========================================
 if boton_enviar:
     total_ventas_dia = ventas_menor + ventas_mayor
@@ -121,29 +136,59 @@ if boton_enviar:
     str_sem_año = f"Sem {num_semana} - {num_año}"
     id_registro = f"rd{int(datetime.timestamp(datetime.now()))}"
 
-    # Fila formateada de forma idéntica a tus columnas en Sheets
-    fila_texto = (
-        f"{id_registro}\t{fecha_sel.strftime('%d/%m/%Y')}\t{id_local_sel}\t"
-        f"{saldo_inicial}\t{ventas_menor}\t{ventas_mayor}\t{total_ventas_dia}\t"
-        f"{ventas_yape}\t{gastos_dia}\t{descripcion_gasto}\t{diferencia_real}\t"
-        f"{num_semana}\t{num_año}\t{fecha_dt.month}\t{str_mes_año}\t{str_sem_año}"
-    )
+    # Diccionario de datos estructurado como JSON para el Apps Script
+    payload = {
+        "ID": id_registro,
+        "Fecha": fecha_sel.strftime("%d/%m/%Y"),
+        "ID_Local": id_local_sel,
+        "Saldo_Inicial_Caja": float(saldo_inicial),
+        "Ventas_Por_Menor": float(ventas_menor),
+        "Ventas_Por_Mayor": float(ventas_mayor),
+        "Total_Ventas_Dia": float(total_ventas_dia),
+        "Ventas_Yape_Digital": float(ventas_yape),
+        "Gastos_Efectivo_Dia": float(gastos_dia),
+        "Descripcion_Gasto": str(descripcion_gasto),
+        "Diferencia": float(diferencia_real),
+        "Semana": int(num_semana),
+        "Año": int(num_año),
+        "Mes": int(fecha_dt.month),
+        "Mes_Año": str_mes_año,
+        "Semana_Año": str_sem_año
+    }
     
-    st.success(f"✅ ¡Cierre de caja procesado con éxito! ID: {id_registro}")
-    st.balloons()
-    
-    # Bloque informativo para la encargada
-    st.info(f"📊 **Resumen del Cálculo:**\n"
-            f"* **Local:** {local_nombre_sel} ({id_local_sel})\n"
-            f"* **Total Ventas Diarias:** S/. {total_ventas_dia:.2f}\n"
-            f"* **Período:** {str_sem_año}")
-    
-    # Herramienta de contingencia: Genera una línea para copiar y pegar directamente abajo en tu Excel si falla la API
-    st.text_area("📋 Fila lista para tu Google Sheets (Copia y pega en la última fila de REGISTRO_DIARIO si lo requieres):", fila_texto)
+    try:
+        # Extraemos la URL de Apps Script desde los secrets de la nube
+        script_url = st.secrets["connections"]["sheets"]["script_api"]
+        
+        # Hacemos la inyección POST directa en la hoja de cálculo
+        response = requests.post(script_url, data=json.dumps(payload), headers={"Content-Type": "application/json"})
+        
+        if response.status_code == 200:
+            st.success(f"🚀 ¡Cierre registrado AUTOMÁTICAMENTE en el Google Sheets! ID: {id_registro}")
+            st.balloons()
+            st.rerun()
+        else:
+            st.error(f"Error en respuesta del servidor de Google (Código: {response.status_code})")
+    except Exception as err:
+        st.error(f"❌ Error al conectar con la API de Google: {err}")
 
 # ==========================================
-# 4. VISUALIZACIÓN DEL HISTORIAL REAL
+# 4. VISUALIZACIÓN INTELIGENTE (FILTRADA POR TIENDA)
 # ==========================================
 st.divider()
-st.subheader("🗂️ Vista General de Registros (REGISTRO_DIARIO)")
-st.dataframe(df_registro, use_container_width=True, hide_index=True)
+st.subheader("🗂️ Historial de Registros")
+
+if not df_registro.empty:
+    # APLICAMOS EL FILTRO DE SEGURIDAD
+    if user["rol"] != "ADMIN":
+        # La tienda solo ve filas donde coincida su ID_Local
+        df_filtrado = df_registro[df_registro["ID_Local"] == user["id_local"]]
+        st.write(f"Mostrando solo los registros históricos de tu sucursal.")
+    else:
+        # El Administrador ve absolutamente todo sin restricciones
+        df_filtrado = df_registro
+        st.write("Mostrando registros globales de todas las sedes (Vista Admin).")
+        
+    st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+else:
+    st.info("No hay registros históricos disponibles en este momento.")
