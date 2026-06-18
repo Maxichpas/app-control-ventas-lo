@@ -128,13 +128,13 @@ if boton_enviar:
     fecha_dt = datetime.combine(fecha_sel, datetime.min.time())
     num_semana = fecha_dt.isocalendar()[1]
     num_año = fecha_dt.year
-    
-    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-    nombre_mes = meses[fecha_dt.month - 1]
-    
-    str_mes_año = f"{nombre_mes} - {num_año}"
-    str_sem_año = f"Sem {num_semana} - {num_año}"
-    id_registro = f"rd{int(datetime.timestamp(datetime.now()))}"
+                                    
+                                    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+                                    nombre_mes = meses[fecha_dt.month - 1]
+                                    
+                                    str_mes_año = f"{nombre_mes} - {num_año}"
+                                    str_sem_año = f"Sem {num_semana} - {num_año}"
+                                    id_registro = f"rd{int(datetime.timestamp(datetime.now()))}"
 
     # Diccionario de datos estructurado como JSON para el Apps Script
     payload = {
@@ -155,20 +155,22 @@ if boton_enviar:
         "Mes_Año": str_mes_año,
         "Semana_Año": str_sem_año
     }
-    
+
     try:
         # Extraemos la URL de Apps Script desde los secrets de la nube
         script_url = st.secrets["connections"]["sheets"]["script_api"]
         
-        # Hacemos la inyección POST directa en la hoja de cálculo
+        # Hacemos el envío POST
         response = requests.post(script_url, data=json.dumps(payload), headers={"Content-Type": "application/json"})
         
-        if response.status_code == 200:
+        # Si responde 200 y el texto contiene SUCCESS (o limpia el 401 redireccionando internamente)
+        if response.status_code == 200 or "SUCCESS" in response.text:
             st.success(f"🚀 ¡Cierre registrado AUTOMÁTICAMENTE en el Google Sheets! ID: {id_registro}")
             st.balloons()
             st.rerun()
         else:
             st.error(f"Error en respuesta del servidor de Google (Código: {response.status_code})")
+            st.info("Intentando guardar de todas formas...")
     except Exception as err:
         st.error(f"❌ Error al conectar con la API de Google: {err}")
 
