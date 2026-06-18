@@ -115,8 +115,6 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
         else:
             id_local_sel = user["id_local"]
             st.info(f"Local asignado automáticamente: **{user['nombre']}**")
-            
-        email_usuario = st.text_input("Encargada (Email)", placeholder="ejemplo@finza.com")
 
     with col2:
         saldo_inicial = st.number_input("Saldo Inicial de Caja (S/.)", min_value=0.0, step=10.0, format="%.2f")
@@ -186,7 +184,7 @@ if boton_enviar:
         "Total_Ventas_Dia": float(total_ventas_dia),
         "Ventas_Yape_Digital": float(ventas_yape),
         "Gastos_Efectivo_Dia": float(gastos_dia),
-        "Descripcion_Gasto": str(descripcion_gasto),
+        "Descripción_Gasto": str(descripcion_gasto),
         "Diferencia": float(diferencia_real),
         "Semana": int(num_semana),
         "Año": int(num_año),
