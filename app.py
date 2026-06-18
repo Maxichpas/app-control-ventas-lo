@@ -101,30 +101,7 @@ st.divider()
 # ==========================================
 # 2. FORMULARIO DE REGISTRO
 # ==========================================
-st.subheader("📝 Nuevo Registro de Cierre Diario")
-
-with st.form(key="formulario_ventas", clear_on_submit=True):
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        fecha_sel = st.date_input("Fecha del Registro", datetime.now())
-        
-        if user["rol"] == "ADMIN":
-            dict_locales = dict(zip(df_locales["Nombre_Local"], df_locales["ID_Local"]))
-            local_nombre_sel = st.selectbox("Seleccione el Local", list(dict_locales.keys()))
-            id_local_sel = dict_locales[local_nombre_sel]
-        else:
-            id_local_sel = user["id_local"]
-            st.info(f"Local asignado automáticamente: **{user['nombre']}**")
-            
-        email_usuario = st.text_input("Encargada (Email)", placeholder="ejemplo@finza.com")
-
-    with col2:
-        saldo_inicial = st.number_input("Saldo Inicial de Caja (S/.)", min_value=0.0, step=10.0, format="%.2f")
-        ventas_menor = st.number_input("Ventas Por Menor (S/.)", min_value=0.0, step=10.0, format="%.2f")
-        ventas_mayor = st.number_input("Ventas Por Mayor (S/.)", min_value=0.0, step=10.0, format="%.2f")
-
-    st.markdown("---")
+st.markdown("---")
     col3, col4 = st.columns(2)
     
     with col3:
@@ -133,9 +110,38 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
         
     with col4:
         descripcion_gasto = st.text_area("Descripción del Gasto", placeholder="Ej: Bolsas, pasajes, limpieza...")
-        diferencia_real = st.number_input("Diferencia de Caja", step=1.0, format="%.2f")
 
-    boton_enviar = st.form_submit_button(label="💾 Enviar Cierre Directo a Google Sheets")
+    st.markdown("### 🔍 Verificación y Cuadre de Caja")
+    col5, col6, col7 = st.columns(3)
+
+    # 1. CÁLCULO DE EFECTIVO NETO ESPERADO (Matemático)
+    efectivo_neto_esperado = saldo_inicial + ventas_menor + ventas_mayor - ventas_yape - gastos_dia
+
+    with col5:
+        st.metric(label="Efectivo Neto Caja (Esperado)", value=f"S/. {efectivo_neto_esperado:.2f}")
+
+    with col6:
+        # Aquí la encargada ingresa lo que realmente tiene en físico
+        efectivo_fisico_real = st.number_input("Total En Caja Final (Físico Real S/.)", min_value=0.0, step=10.0, format="%.2f")
+
+    # 2. CÁLCULO DE LA DIFERENCIA Y ALERTA
+    diferencia_real = efectivo_fisico_real - efectivo_neto_esperado
+
+    if diferencia_real == 0:
+        alerta_cuadre = "🟢 OK"
+        tipo_alerta = "success"
+    elif diferencia_real < 0:
+        alerta_cuadre = f"🔴 FALTA DINERO (S/. {abs(diferencia_real):.2f})"
+        tipo_alerta = "error"
+    else:
+        alerta_cuadre = f"🔵 SOBRA DINERO (S/. {diferencia_real:.2f})"
+        tipo_alerta = "warning"
+
+    with col7:
+        st.text_input("Alerta Cuadre", value=alerta_cuadre, disabled=True)
+
+    # El botón ahora procesa todo junto
+    boton_enviar = st.form_submit_button(label="💾 Enviar Cierre Directo")
 
 # ==========================================
 # 3. PROCESAMIENTO Y ENVÍO AUTOMÁTICO
