@@ -5,16 +5,22 @@ import requests
 import json
 import requests
 
-# === TRUCO PARA OCULTAR EL BOTÓN DE GITHUB, MENÚ Y EL "MANAGE APP" ===
+# === CONFIGURACIÓN ULTRA-SEGURA: OCULTA GITHUB, MENÚS Y EL "MANAGE APP" ===
 st.markdown("""
     <style>
-    #MainMenu {visibility: hidden;}
-    header {visibility: hidden;}
-    footer {visibility: hidden;}
-    /* Oculta de raíz el botón 'Manage app' de la esquina inferior derecha */
+    /* Oculta la barra superior (Menú y GitHub) */
+    header {visibility: hidden !important;}
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    
+    /* Elimina el botón 'Manage app' de la esquina inferior derecha */
     div[data-testid="stStatusWidget"] {display: none !important;}
-    .viewerBadge_link__1S137 {display: none !important;}
-    [data-testid="collapsedControl"] {display: none !important;}
+    div[class*="stStatusWidget"] {display: none !important;}
+    
+    /* Bloquea cualquier elemento flotante o marca de agua del sistema */
+    .stAppDeployButton {display: none !important;}
+    iframe[title="Managed Hosting Banner"] {display: none !important;}
+    #streamlitConnectionIndicator {display: none !important;}
     </style>
     """, unsafe_allow_html=True)
 
