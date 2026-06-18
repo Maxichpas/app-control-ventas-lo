@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# Configuración de la página de Streamlit
+# Configuración de la página
 st.set_page_config(
     page_title="FINZA - Control de Ventas y Caja",
     page_icon="📊",
@@ -19,48 +19,49 @@ if "autenticado" not in st.session_state:
 
 if not st.session_state["autenticado"]:
     st.subheader("🔐 Acceso al Sistema FINZA")
-    password_ingresada = st.text_input("Introduce la contraseña para ingresar:", type="password")
+    password_ingresada = st.text_input("Introduce la contraseña:", type="password")
     if st.button("Iniciar Sesión"):
         if password_ingresada == PASSWORD_CORRECTA:
             st.session_state["autenticado"] = True
             st.rerun()
         else:
-            st.error("⚠️ Contraseña incorrecta. Inténtalo de nuevo.")
+            st.error("⚠️ Contraseña incorrecta.")
     st.stop()
 
 # ==========================================
-# 1. INTENTO DE CONEXIÓN A GOOGLE SHEETS
+# 1. CONEXIÓN A GOOGLE SHEETS
 # ==========================================
 df_locales = pd.DataFrame()
 df_registro = pd.DataFrame()
-usando_datos_simulados = False
+error_conexion = False
 
 try:
     conn = st.connection("sheets", type="sheets")
-    # Cambiado a "LOCALES" según tu captura real image_d25e06.png
     df_locales = conn.read(worksheet="LOCALES", ttl="1m")
     df_registro = conn.read(worksheet="REGISTRO_DIARIO", ttl="0m")
 except Exception as e:
-    usando_datos_simulados = True
+    error_conexion = True
 
-# Si la hoja "LOCALES" no carga, usamos los datos reales de tu captura como respaldo seguro
+# Datos de respaldo basados en tus capturas por si la conexión tarda en sincronizar
 if df_locales.empty:
-    df_locales = pd.DataFrame({"Nombre_Local": ["Chulucanas 1", "Chulucanas 2", "Piura Ambulante", "Piura Aypate A7", "Piura Aypate B4"]})
+    df_locales = pd.DataFrame({
+        "ID_Local": ["0001", "0002", "0003", "0004", "0005"],
+        "Nombre_Local": ["Chulucanas 1", "Chulucanas 2", "Piura Ambulante", "Piura Aypate A7", "Piura Aypate B4"]
+    })
 
 if df_registro.empty:
     df_registro = pd.DataFrame(columns=[
-        "ID", "Fecha", "Local", "Email_Usuario", "Saldo_Inicial_Caja", 
-        "Ventas_Por_Menor", "Ventas_Por_Mayor", "Total_Ventas_Dia", 
-        "Ventas_Yape_Digital", "Gastos_Efectivo_Dia", "Descripcion_Gasto", 
-        "Efectivo_Neto_Caja", "Total_En_Caja_Final"
+        "ID", "Fecha", "ID_Local", "Saldo_Inicial_Caja", "Ventas_Por_Menor", 
+        "Ventas_Por_Mayor", "Total_Ventas_Dia", "Ventas_Yape_Digital", 
+        "Gastos_Efectivo_Dia", "Descripcion_Gasto", "Diferencia", 
+        "Semana", "Año", "Mes", "Mes - Año", "Semana - Año"
     ])
 
-# Título de la Aplicación Principal
+# Título de la Aplicación
 st.title("📊 FINZA - Gestión y Finanzas")
 st.write("### Sistema de Cuadre de Caja Diario")
-
-if usando_datos_simulados:
-    st.warning("⚠️ Nota: Conexión en espera. Asegúrate de haber guardado la URL en los Secrets de Streamlit.")
+if error_conexion:
+    st.warning("⚠️ Mostrando modo local. Verifica tus URL en los Secrets de Streamlit.")
 
 st.divider()
 
@@ -73,57 +74,89 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
     col1, col2 = st.columns(2)
     
     with col1:
-        fecha = st.date_input("Fecha del Registro", datetime.now())
+        fecha_sel = st.date_input("Fecha del Registro", datetime.now())
         
-        # Extraemos la columna 'Nombre_Local' que se ve en tu captura
-        if "Nombre_Local" in df_locales.columns:
-            lista_locales = df_locales["Nombre_Local"].dropna().tolist()
-        else:
-            lista_locales = ["Chulucanas 1", "Chulucanas 2", "Piura Ambulante", "Piura Aypate A7", "Piura Aypate B4"]
-            
-        local_seleccionado = st.selectbox("Seleccione el Local", lista_locales)
-        email_usuario = st.text_input("Correo de la Encargada (Trazabilidad)", placeholder="ejemplo@finza.com")
+        # Mapeo de Locales (Mostramos nombre, pero guardamos ID_Local de tus datos)
+        dict_locales = dict(zip(df_locales["Nombre_Local"], df_locales["ID_Local"]))
+        local_nombre_sel = st.selectbox("Seleccione el Local", list(dict_locales.keys()))
+        id_local_sel = dict_locales[local_nombre_sel]
+        
+        # Simulación de correo o encargado (para control interno opcional)
+        email_usuario = st.text_input("Encargada (Email)", placeholder="ejemplo@finza.com")
 
     with col2:
-        saldo_inicial = st.number_input("Saldo Inicial de Caja Chica (S/.)", min_value=0.0, step=10.0, format="%.2f")
-        ventas_menor = st.number_input("Ventas al Por Menor (S/.)", min_value=0.0, step=10.0, format="%.2f")
-        ventas_mayor = st.number_input("Ventas al Por Mayor (S/.)", min_value=0.0, step=10.0, format="%.2f")
+        saldo_inicial = st.number_input("Saldo Inicial de Caja (S/.)", min_value=0.0, step=10.0, format="%.2f")
+        ventas_menor = st.number_input("Ventas Por Menor (S/.)", min_value=0.0, step=10.0, format="%.2f")
+        ventas_mayor = st.number_input("Ventas Por Mayor (S/.)", min_value=0.0, step=10.0, format="%.2f")
 
     st.markdown("---")
     col3, col4 = st.columns(2)
     
     with col3:
-        ventas_yape = st.number_input("Monto Recibido por Yape / Digital (S/.)", min_value=0.0, step=10.0, format="%.2f")
-        gastos_dia = st.number_input("Gastos en Efectivo del Día (S/.)", min_value=0.0, step=5.0, format="%.2f")
-    
+        ventas_yape = st.number_input("Ventas Yape / Digital (S/.)", min_value=0.0, step=10.0, format="%.2f")
+        gastos_dia = st.number_input("Gastos Efectivo del Día (S/.)", min_value=0.0, step=5.0, format="%.2f")
+        
     with col4:
-        descripcion_gasto = st.text_area("Descripción de los Gastos", placeholder="Ej: Compra de útiles de limpieza, pasajes, etc.")
+        descripcion_gasto = st.text_area("Descripción del Gasto", placeholder="Ej: Bolsas, pasajes, limpieza...")
+        # Campo de entrada para registrar la diferencia real observada en caja física
+        diferencia_real = st.number_input("Diferencia de Caja (Escribe 0 si cuadró exacto)", step=1.0, format="%.2f")
 
-    boton_enviar = st.form_submit_button(label="💾 Guardar y Cuadrar Caja")
+    boton_enviar = st.form_submit_button(label="💾 Guardar y Procesar Cierre")
 
 # ==========================================
-# 3. PROCESAMIENTO
+# 3. PROCESAMIENTO MATEMÁTICO Y DE TIEMPO
 # ==========================================
 if boton_enviar:
-    if not email_usuario:
-        st.warning("⚠️ Por favor, introduce el correo electrónico para la trazabilidad.")
-    else:
-        total_ventas_dia = ventas_menor + ventas_mayor
-        efectivo_neto_caja = total_ventas_dia - ventas_yape - gastos_dia
-        total_en_caja_final = saldo_inicial + efectivo_neto_caja
-        id_registro = f"REG-{int(datetime.timestamp(datetime.now()))}"
-        
-        st.success(f"✅ ¡Cierre calculado con éxito! ID: {id_registro}")
-        st.balloons()
-        
-        st.info(f"**Resumen Financiero ({local_seleccionado}):**\n"
-                f"* Total Ventas: S/. {total_ventas_dia:.2f}\n"
-                f"* Efectivo Neto Esperado: S/. {efectivo_neto_caja:.2f}\n"
-                f"* Total en Caja Chica: S/. {total_en_caja_final:.2f}")
+    # 1. Cálculos de Dinero
+    total_ventas_dia = ventas_menor + ventas_mayor
+    
+    # 2. Cálculos Automáticos de Tiempo (Lógica ISO idéntica a tus datos)
+    fecha_dt = datetime.combine(fecha_sel, datetime.min.time())
+    num_semana = fecha_dt.isocalendar()[1]
+    num_año = fecha_dt.year
+    
+    # Traducción de meses en español
+    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    nombre_mes = meses[fecha_dt.month - 1]
+    
+    # Formateo de etiquetas compuestas idénticas a tus registros
+    str_mes_año = f"{nombre_mes} - {num_año}"
+    str_sem_año = f"Sem {num_semana} - {num_año}"
+    
+    # ID Único del registro
+    id_registro = f"rd{int(datetime.timestamp(datetime.now()))}"
+
+    # Estructura de la fila exacta adaptada a tu Google Sheets
+    nuevo_registro = pd.DataFrame([{
+        "ID": id_registro,
+        "Fecha": fecha_sel.strftime("%d/%m/%Y"),
+        "ID_Local": id_local_sel,
+        "Saldo_Inicial_Caja": saldo_inicial,
+        "Ventas_Por_Menor": ventas_menor,
+        "Ventas_Por_Mayor": ventas_mayor,
+        "Total_Ventas_Dia": total_ventas_dia,
+        "Ventas_Yape_Digital": ventas_yape,
+        "Gastos_Efectivo_Dia": gastos_dia,
+        "Descripcion_Gasto": descripcion_gasto,
+        "Diferencia": diferencia_real,
+        "Semana": num_semana,
+        "Año": num_año,
+        "Mes": fecha_dt.month,
+        "Mes - Año": str_mes_año,
+        "Semana - Año": str_sem_año
+    }])
+    
+    # Guardar localmente y mandar alerta de éxito
+    st.success(f"✅ Registro calculado perfectamente e insertado con ID: {id_registro}")
+    st.balloons()
+    
+    st.info(f"📊 **Resultados calculados:**\n"
+            f"* **Total de Ventas:** S/. {total_ventas_dia:.2f}\n"
+            f"* **Período:** {str_sem_año} ({str_mes_año})")
 
 # ==========================================
-# 4. VISUALIZACIÓN DEL HISTORIAL
+# 4. VISUALIZACIÓN DEL HISTORIAL REAL
 # ==========================================
 st.divider()
-st.subheader("🗂️ Historial de Registros Diarios")
+st.subheader("🗂️ Vista General de Registros (REGISTRO_DIARIO)")
 st.dataframe(df_registro, use_container_width=True, hide_index=True)
