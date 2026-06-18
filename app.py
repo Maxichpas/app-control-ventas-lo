@@ -5,13 +5,16 @@ import requests
 import json
 import requests
 
-# === TRUCO PARA OCULTAR EL BOTÓN DE GITHUB Y EL MENÚ ===
+# === TRUCO PARA OCULTAR EL BOTÓN DE GITHUB, MENÚ Y EL "MANAGE APP" ===
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
+    /* Oculta de raíz el botón 'Manage app' de la esquina inferior derecha */
+    div[data-testid="stStatusWidget"] {display: none !important;}
     .viewerBadge_link__1S137 {display: none !important;}
+    [data-testid="collapsedControl"] {display: none !important;}
     </style>
     """, unsafe_allow_html=True)
 
