@@ -29,21 +29,22 @@ if not st.session_state["autenticado"]:
     st.stop()
 
 # ==========================================
-# 1. CONEXIÓN A GOOGLE SHEETS
+# 1. CONEXIÓN A TU GOOGLE SHEETS REAL
 # ==========================================
 df_locales = pd.DataFrame()
 df_registro = pd.DataFrame()
 error_conexion = False
 
 try:
-    # Conector de Streamlit para Sheets
+    # Conector oficial de Streamlit
     conn = st.connection("sheets", type="sheets")
     df_locales = conn.read(worksheet="LOCALES", ttl="1m")
     df_registro = conn.read(worksheet="REGISTRO_DIARIO", ttl="0m")
 except Exception as e:
     error_conexion = True
+    st.error(f"Error de conexión: {e}")
 
-# Datos de respaldo (Contingencia)
+# Datos de respaldo por seguridad si las pestañas están vacías
 if df_locales.empty:
     df_locales = pd.DataFrame({
         "ID_Local": ["0001", "0002", "0003", "0004", "0005"],
@@ -61,7 +62,6 @@ if df_registro.empty:
 # Título de la Aplicación
 st.title("📊 FINZA - Gestión y Finanzas")
 st.write("### Sistema de Cuadre de Caja Diario")
-
 st.divider()
 
 # ==========================================
@@ -74,7 +74,11 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
     
     with col1:
         fecha_sel = st.date_input("Fecha del Registro", datetime.now())
+        
+        # Formateo seguro del diccionario de locales
+        df_locales["ID_Local"] = df_locales["ID_Local"].astype(str).str.zfill(4)
         dict_locales = dict(zip(df_locales["Nombre_Local"], df_locales["ID_Local"]))
+        
         local_nombre_sel = st.selectbox("Seleccione el Local", list(dict_locales.keys()))
         id_local_sel = dict_locales[local_nombre_sel]
         email_usuario = st.text_input("Encargada (Email)", placeholder="ejemplo@finza.com")
@@ -93,12 +97,12 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
         
     with col4:
         descripcion_gasto = st.text_area("Descripción del Gasto", placeholder="Ej: Bolsas, pasajes, limpieza...")
-        diferencia_real = st.number_input("Diferencia de Caja (Escribe 0 si cuadró exacto)", step=1.0, format="%.2f")
+        diferencia_real = st.number_input("Diferencia de Caja", step=1.0, format="%.2f")
 
     boton_enviar = st.form_submit_button(label="💾 Guardar y Procesar Cierre")
 
 # ==========================================
-# 3. PROCESAMIENTO Y ESCRITURA REAL
+# 3. PROCESAMIENTO MATEMÁTICO Y ENVÍO
 # ==========================================
 if boton_enviar:
     total_ventas_dia = ventas_menor + ventas_mayor
@@ -113,8 +117,8 @@ if boton_enviar:
     str_sem_año = f"Sem {num_semana} - {num_año}"
     id_registro = f"rd{int(datetime.timestamp(datetime.now()))}"
 
-    # Creamos el nuevo registro asegurándonos de que los tipos de datos coincidan con tu Excel
-    nuevo_registro = pd.DataFrame([{
+    # Registro alineado de forma idéntica a tus columnas en Sheets
+    datos_nuevos = {
         "ID": id_registro,
         "Fecha": fecha_sel.strftime("%d/%m/%Y"),
         "ID_Local": id_local_sel,
@@ -131,27 +135,25 @@ if boton_enviar:
         "Mes": int(fecha_dt.month),
         "Mes - Año": str_mes_año,
         "Semana - Año": str_sem_año
-    }])
+    }
     
-    # Unimos el historial con la fila nueva
-    df_actualizado = pd.concat([df_registro, nuevo_registro], ignore_index=True)
-    
-    # --- AQUÍ EJECUTAMOS LA ESCRITURA REAL EN GOOGLE SHEETS ---
     try:
-        # El conector nativo actualiza mediante la función interna ._instance que llama a gspread
-        # Esto reescribirá la pestaña completa incluyendo la nueva fila al final
-        st.write("🔄 Guardando directamente en Google Sheets...")
+        # Volvemos a leer para evitar colisiones si otro local guardó al mismo tiempo
+        df_base_real = conn.read(worksheet="REGISTRO_DIARIO", ttl="0m")
+        df_nueva_fila = pd.DataFrame([datos_nuevos])
         
-        # Intentamos actualizar la hoja mediante la propiedad cliente del conector
-        conn.update(worksheet="REGISTRO_DIARIO", data=df_actualizado)
+        # Concatenamos de forma limpia
+        df_final_subir = pd.concat([df_base_real, df_nueva_fila], ignore_index=True)
         
-        st.success(f"✅ ¡Guardado de verdad en Google Sheets! ID: {id_registro}")
+        # Envío oficial usando el token activo de los secrets
+        conn.update(worksheet="REGISTRO_DIARIO", data=df_final_subir)
+        
+        st.success(f"✅ ¡Guardado de forma permanente en Google Sheets! ID: {id_registro}")
         st.balloons()
-        st.rerun() # Forzamos recarga para ver la nueva fila abajo en el historial
+        st.rerun()
         
-    except Exception as e:
-        st.error(f"❌ Error al escribir en Google Sheets: {e}")
-        st.info("Nota: Recuerda que para poder escribir, tu Google Sheet debe estar compartido como 'Editor' para cualquiera con el enlace en sus opciones de compartir.")
+    except Exception as error_escribiendo:
+        st.error(f"❌ Error al guardar en Google Sheets: {error_escribiendo}")
 
 # ==========================================
 # 4. VISUALIZACIÓN DEL HISTORIAL REAL
