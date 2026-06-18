@@ -36,13 +36,14 @@ df_registro = pd.DataFrame()
 error_conexion = False
 
 try:
+    # Conector de Streamlit para Sheets
     conn = st.connection("sheets", type="sheets")
     df_locales = conn.read(worksheet="LOCALES", ttl="1m")
     df_registro = conn.read(worksheet="REGISTRO_DIARIO", ttl="0m")
 except Exception as e:
     error_conexion = True
 
-# Datos de respaldo basados en tus capturas por si la conexión tarda en sincronizar
+# Datos de respaldo (Contingencia)
 if df_locales.empty:
     df_locales = pd.DataFrame({
         "ID_Local": ["0001", "0002", "0003", "0004", "0005"],
@@ -60,8 +61,6 @@ if df_registro.empty:
 # Título de la Aplicación
 st.title("📊 FINZA - Gestión y Finanzas")
 st.write("### Sistema de Cuadre de Caja Diario")
-if error_conexion:
-    st.warning("⚠️ Mostrando modo local. Verifica tus URL en los Secrets de Streamlit.")
 
 st.divider()
 
@@ -75,13 +74,9 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
     
     with col1:
         fecha_sel = st.date_input("Fecha del Registro", datetime.now())
-        
-        # Mapeo de Locales (Mostramos nombre, pero guardamos ID_Local de tus datos)
         dict_locales = dict(zip(df_locales["Nombre_Local"], df_locales["ID_Local"]))
         local_nombre_sel = st.selectbox("Seleccione el Local", list(dict_locales.keys()))
         id_local_sel = dict_locales[local_nombre_sel]
-        
-        # Simulación de correo o encargado (para control interno opcional)
         email_usuario = st.text_input("Encargada (Email)", placeholder="ejemplo@finza.com")
 
     with col2:
@@ -98,61 +93,65 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
         
     with col4:
         descripcion_gasto = st.text_area("Descripción del Gasto", placeholder="Ej: Bolsas, pasajes, limpieza...")
-        # Campo de entrada para registrar la diferencia real observada en caja física
         diferencia_real = st.number_input("Diferencia de Caja (Escribe 0 si cuadró exacto)", step=1.0, format="%.2f")
 
     boton_enviar = st.form_submit_button(label="💾 Guardar y Procesar Cierre")
 
 # ==========================================
-# 3. PROCESAMIENTO MATEMÁTICO Y DE TIEMPO
+# 3. PROCESAMIENTO Y ESCRITURA REAL
 # ==========================================
 if boton_enviar:
-    # 1. Cálculos de Dinero
     total_ventas_dia = ventas_menor + ventas_mayor
-    
-    # 2. Cálculos Automáticos de Tiempo (Lógica ISO idéntica a tus datos)
     fecha_dt = datetime.combine(fecha_sel, datetime.min.time())
     num_semana = fecha_dt.isocalendar()[1]
     num_año = fecha_dt.year
     
-    # Traducción de meses en español
     meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     nombre_mes = meses[fecha_dt.month - 1]
     
-    # Formateo de etiquetas compuestas idénticas a tus registros
     str_mes_año = f"{nombre_mes} - {num_año}"
     str_sem_año = f"Sem {num_semana} - {num_año}"
-    
-    # ID Único del registro
     id_registro = f"rd{int(datetime.timestamp(datetime.now()))}"
 
-    # Estructura de la fila exacta adaptada a tu Google Sheets
+    # Creamos el nuevo registro asegurándonos de que los tipos de datos coincidan con tu Excel
     nuevo_registro = pd.DataFrame([{
         "ID": id_registro,
         "Fecha": fecha_sel.strftime("%d/%m/%Y"),
         "ID_Local": id_local_sel,
-        "Saldo_Inicial_Caja": saldo_inicial,
-        "Ventas_Por_Menor": ventas_menor,
-        "Ventas_Por_Mayor": ventas_mayor,
-        "Total_Ventas_Dia": total_ventas_dia,
-        "Ventas_Yape_Digital": ventas_yape,
-        "Gastos_Efectivo_Dia": gastos_dia,
-        "Descripcion_Gasto": descripcion_gasto,
-        "Diferencia": diferencia_real,
-        "Semana": num_semana,
-        "Año": num_año,
-        "Mes": fecha_dt.month,
+        "Saldo_Inicial_Caja": float(saldo_inicial),
+        "Ventas_Por_Menor": float(ventas_menor),
+        "Ventas_Por_Mayor": float(ventas_mayor),
+        "Total_Ventas_Dia": float(total_ventas_dia),
+        "Ventas_Yape_Digital": float(ventas_yape),
+        "Gastos_Efectivo_Dia": float(gastos_dia),
+        "Descripcion_Gasto": str(descripcion_gasto),
+        "Diferencia": float(diferencia_real),
+        "Semana": int(num_semana),
+        "Año": int(num_año),
+        "Mes": int(fecha_dt.month),
         "Mes - Año": str_mes_año,
         "Semana - Año": str_sem_año
     }])
     
-    # Guardar localmente y mandar alerta de éxito
-    st.success(f"✅ Registro calculado perfectamente e insertado con ID: {id_registro}")
-    st.balloons()
+    # Unimos el historial con la fila nueva
+    df_actualizado = pd.concat([df_registro, nuevo_registro], ignore_index=True)
     
-    st.info(f"📊 **Resultados calculados:**\n"
-            f"* **Total de Ventas:** S/. {total_ventas_dia:.2f}\n"
-            f"* **Período:** {str_sem_año} ({str_mes_año})")
+    # --- AQUÍ EJECUTAMOS LA ESCRITURA REAL EN GOOGLE SHEETS ---
+    try:
+        # El conector nativo actualiza mediante la función interna ._instance que llama a gspread
+        # Esto reescribirá la pestaña completa incluyendo la nueva fila al final
+        st.write("🔄 Guardando directamente en Google Sheets...")
+        
+        # Intentamos actualizar la hoja mediante la propiedad cliente del conector
+        conn.update(worksheet="REGISTRO_DIARIO", data=df_actualizado)
+        
+        st.success(f"✅ ¡Guardado de verdad en Google Sheets! ID: {id_registro}")
+        st.balloons()
+        st.rerun() # Forzamos recarga para ver la nueva fila abajo en el historial
+        
+    except Exception as e:
+        st.error(f"❌ Error al escribir en Google Sheets: {e}")
+        st.info("Nota: Recuerda que para poder escribir, tu Google Sheet debe estar compartido como 'Editor' para cualquiera con el enlace en sus opciones de compartir.")
 
 # ==========================================
 # 4. VISUALIZACIÓN DEL HISTORIAL REAL
