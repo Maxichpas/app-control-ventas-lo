@@ -14,7 +14,6 @@ st.set_page_config(
 # ==========================================
 # CONFIGURACIÓN DE USUARIOS POR TIENDA
 # ==========================================
-# Definimos las contraseñas y qué "ID_Local" puede ver cada una
 USUARIOS = {
     "admin": {"pass": "FinzaMaster2026*", "rol": "ADMIN", "id_local": "TODOS"},
     "chulucanas1": {"pass": "Chulu1*", "rol": "TIENDA", "id_local": "0001", "nombre": "Chulucanas 1"},
@@ -55,7 +54,6 @@ df_registro = pd.DataFrame()
 try:
     df_locales = pd.read_csv(URL_LOCALES)
     df_registro = pd.read_csv(URL_REGISTRO)
-    # Limpieza de strings
     df_registro["ID_Local"] = df_registro["ID_Local"].astype(str).str.zfill(4)
     df_locales["ID_Local"] = df_locales["ID_Local"].astype(str).str.zfill(4)
 except Exception as e:
@@ -67,7 +65,7 @@ if df_locales.empty:
         "Nombre_Local": ["Chulucanas 1", "Chulucanas 2", "Piura Ambulante", "Piura Aypate A7", "Piura Aypate B4"]
     })
 
-# Título Principal adaptado al usuario logueado
+# Título Principal adaptado al usuario
 st.title("📊 FINZA - Gestión y Finanzas")
 if user["rol"] == "ADMIN":
     st.write("### Panel de Control General (Modo Administrador)")
@@ -91,7 +89,6 @@ with st.form(key="formulario_ventas", clear_on_submit=True):
     with col1:
         fecha_sel = st.date_input("Fecha del Registro", datetime.now())
         
-        # SI ES TIENDA, bloqueamos el local para que solo registre el suyo. SI ES ADMIN, puede elegir.
         if user["rol"] == "ADMIN":
             dict_locales = dict(zip(df_locales["Nombre_Local"], df_locales["ID_Local"]))
             local_nombre_sel = st.selectbox("Seleccione el Local", list(dict_locales.keys()))
@@ -128,15 +125,14 @@ if boton_enviar:
     fecha_dt = datetime.combine(fecha_sel, datetime.min.time())
     num_semana = fecha_dt.isocalendar()[1]
     num_año = fecha_dt.year
-                                    
-                                    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-                                    nombre_mes = meses[fecha_dt.month - 1]
-                                    
-                                    str_mes_año = f"{nombre_mes} - {num_año}"
-                                    str_sem_año = f"Sem {num_semana} - {num_año}"
-                                    id_registro = f"rd{int(datetime.timestamp(datetime.now()))}"
+    
+    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    nombre_mes = meses[fecha_dt.month - 1]
+    
+    str_mes_año = f"{nombre_mes} - {num_año}"
+    str_sem_año = f"Sem {num_semana} - {num_año}"
+    id_registro = f"rd{int(datetime.timestamp(datetime.now()))}"
 
-    # Diccionario de datos estructurado como JSON para el Apps Script
     payload = {
         "ID": id_registro,
         "Fecha": fecha_sel.strftime("%d/%m/%Y"),
@@ -155,39 +151,31 @@ if boton_enviar:
         "Mes_Año": str_mes_año,
         "Semana_Año": str_sem_año
     }
-
+    
     try:
-        # Extraemos la URL de Apps Script desde los secrets de la nube
         script_url = st.secrets["connections"]["sheets"]["script_api"]
-        
-        # Hacemos el envío POST
         response = requests.post(script_url, data=json.dumps(payload), headers={"Content-Type": "application/json"})
         
-        # Si responde 200 y el texto contiene SUCCESS (o limpia el 401 redireccionando internamente)
         if response.status_code == 200 or "SUCCESS" in response.text:
             st.success(f"🚀 ¡Cierre registrado AUTOMÁTICAMENTE en el Google Sheets! ID: {id_registro}")
             st.balloons()
             st.rerun()
         else:
             st.error(f"Error en respuesta del servidor de Google (Código: {response.status_code})")
-            st.info("Intentando guardar de todas formas...")
     except Exception as err:
         st.error(f"❌ Error al conectar con la API de Google: {err}")
 
 # ==========================================
-# 4. VISUALIZACIÓN INTELIGENTE (FILTRADA POR TIENDA)
+# 4. VISUALIZACIÓN FILTRADA POR TIENDA
 # ==========================================
 st.divider()
 st.subheader("🗂️ Historial de Registros")
 
 if not df_registro.empty:
-    # APLICAMOS EL FILTRO DE SEGURIDAD
     if user["rol"] != "ADMIN":
-        # La tienda solo ve filas donde coincida su ID_Local
         df_filtrado = df_registro[df_registro["ID_Local"] == user["id_local"]]
         st.write(f"Mostrando solo los registros históricos de tu sucursal.")
     else:
-        # El Administrador ve absolutamente todo sin restricciones
         df_filtrado = df_registro
         st.write("Mostrando registros globales de todas las sedes (Vista Admin).")
         
