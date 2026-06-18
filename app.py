@@ -3,8 +3,19 @@ import pandas as pd
 from datetime import datetime
 import requests
 import json
+import requests
 
-# Configuración de la página
+# === TRUCO PARA OCULTAR EL BOTÓN DE GITHUB Y EL MENÚ ===
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    .viewerBadge_link__1S137 {display: none !important;}
+    </style>
+    """, unsafe_allow_html=True)
+
+# Configuración de la página (esta línea ya la tienes, ponla debajo del truco)
 st.set_page_config(
     page_title="FINZA - Control de Ventas y Caja",
     page_icon="📊",
