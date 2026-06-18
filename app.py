@@ -110,23 +110,23 @@ st.markdown("---")
         
     with col4:
         descripcion_gasto = st.text_area("Descripción del Gasto", placeholder="Ej: Bolsas, pasajes, limpieza...")
-
+    
     st.markdown("### 🔍 Verificación y Cuadre de Caja")
     col5, col6, col7 = st.columns(3)
-
+    
     # 1. CÁLCULO DE EFECTIVO NETO ESPERADO (Matemático)
     efectivo_neto_esperado = saldo_inicial + ventas_menor + ventas_mayor - ventas_yape - gastos_dia
-
+    
     with col5:
         st.metric(label="Efectivo Neto Caja (Esperado)", value=f"S/. {efectivo_neto_esperado:.2f}")
-
+    
     with col6:
         # Aquí la encargada ingresa lo que realmente tiene en físico
         efectivo_fisico_real = st.number_input("Total En Caja Final (Físico Real S/.)", min_value=0.0, step=10.0, format="%.2f")
-
+    
     # 2. CÁLCULO DE LA DIFERENCIA Y ALERTA
     diferencia_real = efectivo_fisico_real - efectivo_neto_esperado
-
+    
     if diferencia_real == 0:
         alerta_cuadre = "🟢 OK"
         tipo_alerta = "success"
@@ -136,10 +136,10 @@ st.markdown("---")
     else:
         alerta_cuadre = f"🔵 SOBRA DINERO (S/. {diferencia_real:.2f})"
         tipo_alerta = "warning"
-
+    
     with col7:
         st.text_input("Alerta Cuadre", value=alerta_cuadre, disabled=True)
-
+    
     # El botón ahora procesa todo junto
     boton_enviar = st.form_submit_button(label="💾 Enviar Cierre Directo")
 
