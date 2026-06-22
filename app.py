@@ -226,56 +226,77 @@ with tab_historial:
     else:
         st.info("No hay registros históricos disponibles.")
 
-# ---- PESTAÑA 3: GASTOS MENSUALES DEL DUEÑO (SOLO ADMIN) ----
+# ---- PESTAÑA 3: GASTOS MENSUALES POR LOCAL (SOLO ADMIN) ----
 if tab_gastos_admin is not None:
     with tab_gastos_admin:
-        st.subheader("💰 Registro de Gastos de Administración (Mensual / Dueño)")
-        st.write("Usa este formulario para registrar costos fijos, planillas u otros gastos del mes.")
+        st.subheader("📊 Matriz de Costos y Gastos Fijos Mensuales")
+        st.write("Configura la estructura de costos y gastos fijos para cada local correspondiente al mes.")
         
-        with st.form(key="form_gastos_admin", clear_on_submit=True):
-            col_g1, col_g2 = st.columns(2)
-            with col_g1:
-                mes_gasto = st.selectbox("Mes del Gasto", ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"], index=datetime.now().month - 1)
-                anio_gasto = st.number_input("Año", min_value=2024, max_value=2030, value=datetime.now().year, step=1)
-            with col_g2:
-                monto_gasto = st.number_input("Monto del Gasto (S/.)", min_value=0.0, step=50.0, format="%.2f")
-                categoria_gasto = st.selectbox("Categoría", ["Alquiler", "Planilla / Sueldos", "Contabilidad", "Impuestos", "Servicios (Luz/Agua/Internet)", "Mercadería / Proveedores", "Otros Gastos Admin"])
+        with st.form(key="form_gastos_fijos_admin", clear_on_submit=True):
+            # Fila 1: Temporalidad y Destino
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                dict_locales = dict(zip(df_locales["Nombre_Local"], df_locales["ID_Local"]))
+                local_gasto_sel = st.selectbox("Seleccione el Local a Configurar", list(dict_locales.keys()))
+                id_local_gasto = dict_locales[local_gasto_sel]
+            with col_f2:
+                mes_gasto = st.selectbox("Mes de Aplicación", ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"], index=datetime.now().month - 1)
+            with col_f3:
+                anio_gasto = st.number_input("Año de Aplicación", min_value=2024, max_value=2030, value=datetime.now().year, step=1)
             
-            detalle_gasto = st.text_area("Detalle / Descripción del Gasto Administrativo")
+            st.markdown("##### 📦 Márgenes de Costo de Ventas")
+            col_f4, col_f5 = st.columns(2)
+            with col_f4:
+                pct_menor = st.number_input("Pct Costo Menor (Ej: 0.60)", min_value=0.0, max_value=1.0, value=0.60, step=0.05, format="%.2f")
+            with col_f5:
+                pct_mayor = st.number_input("Pct Costo Mayor (Ej: 0.80)", min_value=0.0, max_value=1.0, value=0.80, step=0.05, format="%.2f")
             
-            boton_gasto_admin = st.form_submit_button(label="🔗 Registrar Gasto Administrativo")
+            st.markdown("##### 💰 Desglose de Gastos Fijos (S/.)")
+            col_f6, col_f7 = st.columns(2)
+            with col_f6:
+                alquiler = st.number_input("Alquiler (S/.)", min_value=0.0, step=50.0, format="%.2f")
+                sueldos = st.number_input("Sueldos / Planilla (S/.)", min_value=0.0, step=50.0, format="%.2f")
+            with col_f7:
+                servicios = st.number_input("Servicios (Luz/Agua/Net) (S/.)", min_value=0.0, step=10.0, format="%.2f")
+                asesoria = st.number_input("Asesoría / Jefe Sede (S/.)", min_value=0.0, step=50.0, format="%.2f")
+            
+            # Cálculo Automático del Total en Pantalla antes de enviar
+            total_gastos_calculado = alquiler + sueldos + servicios + asesoria
+            st.metric(label="✨ Total Gastos Fijos Calculados", value=f"S/. {total_gastos_calculado:.2f}")
+            
+            boton_gasto_admin = st.form_submit_button(label="💾 Guardar en Matriz de Gastos")
             
         if boton_gasto_admin:
-            id_gasto = f"ga{int(datetime.timestamp(datetime.now()))}"
+            id_gasto_fm = f"fm{int(datetime.timestamp(datetime.now()))}"
+            meses_lista = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+            num_mes = meses_lista.index(mes_gasto) + 1
             
-            # Formateamos el payload adaptado para que tu backend de Apps Script lo reciba de manera compatible
+            # payload idéntico a tu estructura de columnas para mapearlo en tu Apps Script
             payload_gasto = {
-                "ID": id_gasto,
-                "Fecha": datetime.now().strftime("%d/%m/%Y"),
-                "ID_Local": "ADMIN",  # Identificador único para saber que proviene de la cuenta principal del dueño
-                "Saldo_Inicial_Caja": 0.0,
-                "Ventas_Por_Menor": 0.0,
-                "Ventas_Por_Mayor": 0.0,
-                "Total_Ventas_Dia": 0.0,
-                "Ventas_Yape_Digital": 0.0,
-                "Gastos_Efectivo_Dia": float(monto_gasto), # Lo registramos en la columna de egresos del Excel
-                "Descripción_Gasto": f"[{categoria_gasto}] {detalle_gasto}",
-                "Diferencia": 0.0,
-                "Semana": 0,
+                "ID": id_gasto_fm,
+                "Fecha": f"{anio_gasto}-{str(num_mes).zfill(2)}", # Formato YYYY-MM como en tu tabla
+                "ID_Local": id_local_gasto,
+                "Pct_Costo_Menor": float(pct_menor),
+                "Pct_Costo_Mayor": float(pct_mayor),
+                "Alquiler": float(alquiler),
+                "Sueldos": float(sueldos),
+                "Servicios": float(servicios),
+                "Asesoria_Jefe": float(asesoria),
+                "Total_Gastos_Fijos": float(total_gastos_calculado),
+                "Mes": mes_gasto,
                 "Año": int(anio_gasto),
-                "Mes": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"].index(mes_gasto) + 1,
                 "Mes_Año": f"{mes_gasto} - {anio_gasto}",
-                "Semana_Año": "ADMIN"
+                "Origen": "MATRIZ_GASTOS" # Etiqueta para que tu Apps Script sepa a qué pestaña enviarlo
             }
             
             try:
                 script_url = st.secrets["connections"]["sheets"]["script_api"]
                 response = requests.post(script_url, data=json.dumps(payload_gasto), headers={"Content-Type": "application/json"})
                 if response.status_code == 200 or "SUCCESS" in response.text:
-                    st.success(f"✅ Gasto Administrativo guardado con éxito. ID: {id_gasto}")
+                    st.success(f"✅ ¡Estructura de costos registrada para {local_gasto_sel}! ID: {id_gasto_fm}")
                     st.balloons()
                     st.rerun()
                 else:
-                    st.error("Error al guardar el gasto administrativo.")
+                    st.error("Error al procesar el guardado en Google Sheets.")
             except Exception as err:
-                st.error(f"❌ Error de conexión: {err}")
+                st.error(f"❌ Error de conexión con la API: {err}")
