@@ -86,140 +86,196 @@ if df_locales.empty:
 
 # Título Principal
 st.title("📊 FINZA - Gestión y Finanzas")
+
+# Cabecera dinámica y botones de sesión
+col_user, col_logout = st.columns([4, 1])
+with col_user:
+    if user["rol"] == "ADMIN":
+        st.write("### Panel de Control General (Modo Administrador)")
+    else:
+        st.write(f"### Sistema de Cierre - Sede: **{user['nombre']}**")
+with col_logout:
+    if st.button("🚪 Salir"):
+        st.session_state["user_data"] = None
+        st.rerun()
+
+st.divider()
+
+# ==========================================
+# 2. SISTEMA DE VISTAS (PESTAÑAS)
+# ==========================================
 if user["rol"] == "ADMIN":
-    st.write("### Panel de Control General (Modo Administrador)")
+    # El Administrador ve tres pestañas: Registro diario, Historial y sus Gastos Mensuales del Dueño
+    tab_cierre, tab_historial, tab_gastos_admin = st.tabs(["📝 Cierre Diario Tiendas", "🗂️ Historial General", "💰 Mis Gastos Mensuales (Dueño)"])
 else:
-    st.write(f"### Sistema de Cierre - Sede: **{user['nombre']}**")
+    # Las tiendas solo ven dos pestañas comunes
+    tab_cierre, tab_historial = st.tabs(["📝 Nuevo Cierre Diario", "🗂️ Mi Historial"])
+    tab_gastos_admin = None
 
-if st.button("🚪 Cerrar Sesión"):
-    st.session_state["user_data"] = None
-    st.rerun()
-
-st.divider()
-
-# ==========================================
-# 2. FORMULARIO DE REGISTRO
-# ==========================================
-st.subheader("📝 Nuevo Registro de Cierre Diario")
-
-with st.form(key="formulario_ventas", clear_on_submit=True):
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        fecha_sel = st.date_input("Fecha del Registro", datetime.now())
+# ---- PESTAÑA 1: FORMULARIO DE CIERRE DIARIO ----
+with tab_cierre:
+    st.subheader("Formulario de Cierre Diario")
+    with st.form(key="formulario_ventas", clear_on_submit=True):
+        col1, col2 = st.columns(2)
         
-        if user["rol"] == "ADMIN":
-            dict_locales = dict(zip(df_locales["Nombre_Local"], df_locales["ID_Local"]))
-            local_nombre_sel = st.selectbox("Seleccione el Local", list(dict_locales.keys()))
-            id_local_sel = dict_locales[local_nombre_sel]
+        with col1:
+            fecha_sel = st.date_input("Fecha del Registro", datetime.now())
+            if user["rol"] == "ADMIN":
+                dict_locales = dict(zip(df_locales["Nombre_Local"], df_locales["ID_Local"]))
+                local_nombre_sel = st.selectbox("Seleccione el Local", list(dict_locales.keys()))
+                id_local_sel = dict_locales[local_nombre_sel]
+            else:
+                id_local_sel = user["id_local"]
+                st.info(f"Local asignado automáticamente: **{user['nombre']}**")
+
+        with col2:
+            saldo_inicial = st.number_input("Saldo Inicial de Caja (S/.)", min_value=0.0, step=10.0, format="%.2f")
+            ventas_menor = st.number_input("Ventas Por Menor (S/.)", min_value=0.0, step=10.0, format="%.2f")
+            ventas_mayor = st.number_input("Ventas Por Mayor (S/.)", min_value=0.0, step=10.0, format="%.2f")
+
+        st.markdown("---")
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            ventas_yape = st.number_input("Ventas Yape / Digital (S/.)", min_value=0.0, step=10.0, format="%.2f")
+            gastos_dia = st.number_input("Gastos Efectivo del Día (S/.)", min_value=0.0, step=5.0, format="%.2f")
+            
+        with col4:
+            descripcion_gasto = st.text_area("Descripción del Gasto", placeholder="Ej: Bolsas, pasajes, limpieza...")
+        
+        st.markdown("### 🔍 Verificación y Cuadre de Caja")
+        col5, col6, col7 = st.columns(3)
+        
+        efectivo_neto_esperado = saldo_inicial + ventas_menor + ventas_mayor - ventas_yape - gastos_dia
+        
+        with col5:
+            st.metric(label="Efectivo_Neto_Caja (Calculado)", value=f"S/. {efectivo_neto_esperado:.2f}")
+        
+        with col6:
+            efectivo_fisico_real = st.number_input("Total_En_Caja_Final (Físico Real)", min_value=0.0, step=10.0, format="%.2f")
+        
+        diferencia_real = efectivo_fisico_real - efectivo_neto_esperado
+        
+        if diferencia_real == 0:
+            alerta_cuadre = "OK"
+        elif diferencia_real < 0:
+            alerta_cuadre = f"FALTA DINERO (S/. {abs(diferencia_real):.2f})"
         else:
-            id_local_sel = user["id_local"]
-            st.info(f"Local asignado automáticamente: **{user['nombre']}**")
-
-    with col2:
-        saldo_inicial = st.number_input("Saldo Inicial de Caja (S/.)", min_value=0.0, step=10.0, format="%.2f")
-        ventas_menor = st.number_input("Ventas Por Menor (S/.)", min_value=0.0, step=10.0, format="%.2f")
-        ventas_mayor = st.number_input("Ventas Por Mayor (S/.)", min_value=0.0, step=10.0, format="%.2f")
-
-    st.markdown("---")
-    col3, col4 = st.columns(2)
-    
-    with col3:
-        ventas_yape = st.number_input("Ventas Yape / Digital (S/.)", min_value=0.0, step=10.0, format="%.2f")
-        gastos_dia = st.number_input("Gastos Efectivo del Día (S/.)", min_value=0.0, step=5.0, format="%.2f")
+            alerta_cuadre = f"SOBRA DINERO (S/. {diferencia_real:.2f})"
         
-    with col4:
-        descripcion_gasto = st.text_area("Descripción del Gasto", placeholder="Ej: Bolsas, pasajes, limpieza...")
-    
-    st.markdown("### 🔍 Verificación y Cuadre de Caja")
-    col5, col6, col7 = st.columns(3)
-    
-    # 1. CÁLCULO DE EFECTIVO NETO ESPERADO
-    efectivo_neto_esperado = saldo_inicial + ventas_menor + ventas_mayor - ventas_yape - gastos_dia
-    
-    with col5:
-        st.metric(label="Efectivo_Neto_Caja (Calculado)", value=f"S/. {efectivo_neto_esperado:.2f}")
-    
-    with col6:
-        efectivo_fisico_real = st.number_input("Total_En_Caja_Final (Físico Real)", min_value=0.0, step=10.0, format="%.2f")
-    
-    # 2. CÁLCULO DE LA DIFERENCIA Y ALERTA
-    diferencia_real = efectivo_fisico_real - efectivo_neto_esperado
-    
-    if diferencia_real == 0:
-        alerta_cuadre = "OK"
-    elif diferencia_real < 0:
-        alerta_cuadre = f"FALTA DINERO (S/. {abs(diferencia_real):.2f})"
-    else:
-        alerta_cuadre = f"SOBRA DINERO (S/. {diferencia_real:.2f})"
-    
-    with col7:
-        st.text_input("Alerta_Cuadre", value=alerta_cuadre, disabled=True)
-    
-    boton_enviar = st.form_submit_button(label="💾 Enviar Cierre Directo")
-
-# ==========================================
-# 3. PROCESAMIENTO Y ENVÍO AUTOMÁTICO
-# ==========================================
-if boton_enviar:
-    total_ventas_dia = ventas_menor + ventas_mayor
-    fecha_dt = datetime.combine(fecha_sel, datetime.min.time())
-    num_semana = fecha_dt.isocalendar()[1]
-    num_año = fecha_dt.year
-    
-    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-    nombre_mes = meses[fecha_dt.month - 1]
-    
-    str_mes_año = f"{nombre_mes} - {num_año}"
-    str_sem_año = f"Sem {num_semana} - {num_año}"
-    id_registro = f"rd{int(datetime.timestamp(datetime.now()))}"
-
-    payload = {
-        "ID": id_registro,
-        "Fecha": fecha_sel.strftime("%d/%m/%Y"),
-        "ID_Local": id_local_sel,
-        "Saldo_Inicial_Caja": float(saldo_inicial),
-        "Ventas_Por_Menor": float(ventas_menor),
-        "Ventas_Por_Mayor": float(ventas_mayor),
-        "Total_Ventas_Dia": float(total_ventas_dia),
-        "Ventas_Yape_Digital": float(ventas_yape),
-        "Gastos_Efectivo_Dia": float(gastos_dia),
-        "Descripción_Gasto": str(descripcion_gasto),
-        "Diferencia": float(diferencia_real),
-        "Semana": int(num_semana),
-        "Año": int(num_año),
-        "Mes": int(fecha_dt.month),
-        "Mes_Año": str_mes_año,
-        "Semana_Año": str_sem_año
-    }
-    
-    try:
-        script_url = st.secrets["connections"]["sheets"]["script_api"]
-        response = requests.post(script_url, data=json.dumps(payload), headers={"Content-Type": "application/json"})
+        with col7:
+            st.text_input("Alerta_Cuadre", value=alerta_cuadre, disabled=True)
         
-        if response.status_code == 200 or "SUCCESS" in response.text:
-            st.success(f"🚀 ¡Cierre registrado AUTOMÁTICAMENTE en el Google Sheets! ID: {id_registro}")
-            st.balloons()
-            st.rerun()
+        boton_enviar = st.form_submit_button(label="💾 Enviar Cierre Directo")
+
+    if boton_enviar:
+        total_ventas_dia = ventas_menor + ventas_mayor
+        fecha_dt = datetime.combine(fecha_sel, datetime.min.time())
+        num_semana = fecha_dt.isocalendar()[1]
+        num_año = fecha_dt.year
+        
+        meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        nombre_mes = meses[fecha_dt.month - 1]
+        
+        str_mes_año = f"{nombre_mes} - {num_año}"
+        str_sem_año = f"Sem {num_semana} - {num_año}"
+        id_registro = f"rd{int(datetime.timestamp(datetime.now()))}"
+
+        payload = {
+            "ID": id_registro,
+            "Fecha": fecha_sel.strftime("%d/%m/%Y"),
+            "ID_Local": id_local_sel,
+            "Saldo_Inicial_Caja": float(saldo_inicial),
+            "Ventas_Por_Menor": float(ventas_menor),
+            "Ventas_Por_Mayor": float(ventas_mayor),
+            "Total_Ventas_Dia": float(total_ventas_dia),
+            "Ventas_Yape_Digital": float(ventas_yape),
+            "Gastos_Efectivo_Dia": float(gastos_dia),
+            "Descripción_Gasto": str(descripcion_gasto),
+            "Diferencia": float(diferencia_real),
+            "Semana": int(num_semana),
+            "Año": int(num_año),
+            "Mes": int(fecha_dt.month),
+            "Mes_Año": str_mes_año,
+            "Semana_Año": str_sem_año
+        }
+        
+        try:
+            script_url = st.secrets["connections"]["sheets"]["script_api"]
+            response = requests.post(script_url, data=json.dumps(payload), headers={"Content-Type": "application/json"})
+            if response.status_code == 200 or "SUCCESS" in response.text:
+                st.success(f"🚀 ¡Cierre registrado AUTOMÁTICAMENTE! ID: {id_registro}")
+                st.balloons()
+                st.rerun()
+            else:
+                st.error(f"Error en el servidor de Google (Código: {response.status_code})")
+        except Exception as err:
+            st.error(f"❌ Error de conexión: {err}")
+
+# ---- PESTAÑA 2: HISTORIAL ----
+with tab_historial:
+    st.subheader("🗂️ Historial de Registros")
+    if not df_registro.empty:
+        if user["rol"] != "ADMIN":
+            df_filtrado = df_registro[df_registro["ID_Local"] == user["id_local"]]
+            st.write("Mostrando los registros históricos de tu sucursal.")
         else:
-            st.error(f"Error en respuesta del servidor de Google (Código: {response.status_code})")
-    except Exception as err:
-        st.error(f"❌ Error al conectar con la API de Google: {err}")
-
-# ==========================================
-# 4. VISUALIZACIÓN FILTRADA POR TIENDA
-# ==========================================
-st.divider()
-st.subheader("🗂️ Historial de Registros")
-
-if not df_registro.empty:
-    if user["rol"] != "ADMIN":
-        df_filtrado = df_registro[df_registro["ID_Local"] == user["id_local"]]
-        st.write(f"Mostrando solo los registros históricos de tu sucursal.")
+            df_filtrado = df_registro
+            st.write("Mostrando registros globales de todas las sedes (Vista Admin).")
+        st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
     else:
-        df_filtrado = df_registro
-        st.write("Mostrando registros globales de todas las sedes (Vista Admin).")
+        st.info("No hay registros históricos disponibles.")
+
+# ---- PESTAÑA 3: GASTOS MENSUALES DEL DUEÑO (SOLO ADMIN) ----
+if tab_gastos_admin is not None:
+    with tab_gastos_admin:
+        st.subheader("💰 Registro de Gastos de Administración (Mensual / Dueño)")
+        st.write("Usa este formulario para registrar costos fijos, planillas u otros gastos del mes.")
         
-    st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
-else:
-    st.info("No hay registros históricos disponibles en este momento.")
+        with st.form(key="form_gastos_admin", clear_on_submit=True):
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                mes_gasto = st.selectbox("Mes del Gasto", ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"], index=datetime.now().month - 1)
+                anio_gasto = st.number_input("Año", min_value=2024, max_value=2030, value=datetime.now().year, step=1)
+            with col_g2:
+                monto_gasto = st.number_input("Monto del Gasto (S/.)", min_value=0.0, step=50.0, format="%.2f")
+                categoria_gasto = st.selectbox("Categoría", ["Alquiler", "Planilla / Sueldos", "Contabilidad", "Impuestos", "Servicios (Luz/Agua/Internet)", "Mercadería / Proveedores", "Otros Gastos Admin"])
+            
+            detalle_gasto = st.text_area("Detalle / Descripción del Gasto Administrativo")
+            
+            boton_gasto_admin = st.form_submit_button(label="🔗 Registrar Gasto Administrativo")
+            
+        if boton_gasto_admin:
+            id_gasto = f"ga{int(datetime.timestamp(datetime.now()))}"
+            
+            # Formateamos el payload adaptado para que tu backend de Apps Script lo reciba de manera compatible
+            payload_gasto = {
+                "ID": id_gasto,
+                "Fecha": datetime.now().strftime("%d/%m/%Y"),
+                "ID_Local": "ADMIN",  # Identificador único para saber que proviene de la cuenta principal del dueño
+                "Saldo_Inicial_Caja": 0.0,
+                "Ventas_Por_Menor": 0.0,
+                "Ventas_Por_Mayor": 0.0,
+                "Total_Ventas_Dia": 0.0,
+                "Ventas_Yape_Digital": 0.0,
+                "Gastos_Efectivo_Dia": float(monto_gasto), # Lo registramos en la columna de egresos del Excel
+                "Descripción_Gasto": f"[{categoria_gasto}] {detalle_gasto}",
+                "Diferencia": 0.0,
+                "Semana": 0,
+                "Año": int(anio_gasto),
+                "Mes": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"].index(mes_gasto) + 1,
+                "Mes_Año": f"{mes_gasto} - {anio_gasto}",
+                "Semana_Año": "ADMIN"
+            }
+            
+            try:
+                script_url = st.secrets["connections"]["sheets"]["script_api"]
+                response = requests.post(script_url, data=json.dumps(payload_gasto), headers={"Content-Type": "application/json"})
+                if response.status_code == 200 or "SUCCESS" in response.text:
+                    st.success(f"✅ Gasto Administrativo guardado con éxito. ID: {id_gasto}")
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error("Error al guardar el gasto administrativo.")
+            except Exception as err:
+                st.error(f"❌ Error de conexión: {err}")
